@@ -3,26 +3,65 @@
 require("db_parameters.php");
 header('Content-Type: application/json');
 
-// Consulta para obtener las comandas por trabajador
-$sql_comandas_por_trabajador = "
-    SELECT l.izena, COUNT(e.id) AS total_comandas
-    FROM eskaera e
-    JOIN langilea l ON e.langilea_id = l.id
-    GROUP BY l.id
-    ORDER BY total_comandas DESC
-";
+// --- Consultas adicionales ---
+$datos = [];
 
-$result_comandas_por_trabajador = $conn->query($sql_comandas_por_trabajador);
+// Consulta para obtener los pedidos por plato
+$sql_platos = "SELECT platera_id, COUNT(*) AS total_pedidos FROM eskaera_platera GROUP BY platera_id";
+$result_platos = $conn->query($sql_platos);
 
-$comandas_por_trabajador = [];
-if ($result_comandas_por_trabajador && $result_comandas_por_trabajador->num_rows > 0) {
-    while ($row = $result_comandas_por_trabajador->fetch_assoc()) {
-        $comandas_por_trabajador[] = $row;
+$pedidos_por_plato = [];
+if ($result_platos && $result_platos->num_rows > 0) {
+    while ($row = $result_platos->fetch_assoc()) {
+        $pedidos_por_plato[] = $row;
     }
 }
 
-// Consulta original para obtener los pedidos
-$sql = "SELECT * FROM eskaera";
+// Consulta para obtener el día de la semana con más pedidos
+$sql_dia = "SELECT DAYNAME(eskaera_ordua) AS dia_semana, COUNT(*) AS total_pedidos 
+            FROM eskaera_platera 
+            GROUP BY dia_semana 
+            ORDER BY total_pedidos DESC 
+            LIMIT 1";
+
+$result_dia = $conn->query($sql_dia);
+
+$dia_mas_pedidos = [];
+if ($result_dia && $result_dia->num_rows > 0) {
+    $dia_mas_pedidos = $result_dia->fetch_assoc();
+}
+
+// Consulta para obtener el día de la semana con mayor facturación
+$sql_facturacion = "SELECT DAYNAME(e.eskaera_ordua) AS dia_semana, SUM(p.prezioa) AS total_facturado
+                    FROM eskaera_platera e
+                    JOIN platera p ON e.platera_id = p.id
+                    GROUP BY dia_semana
+                    ORDER BY total_facturado DESC
+                    LIMIT 1";
+
+$result_facturacion = $conn->query($sql_facturacion);
+
+$dia_mas_facturacion = [];
+if ($result_facturacion && $result_facturacion->num_rows > 0) {
+    $dia_mas_facturacion = $result_facturacion->fetch_assoc();
+}
+
+// --- Nueva consulta para obtener el día del mes con más pedidos ---
+$sql_dia_mes = "SELECT DAY(eskaera_ordua) AS dia_mes, COUNT(*) AS total_pedidos
+                FROM eskaera_platera
+                GROUP BY dia_mes
+                ORDER BY total_pedidos DESC
+                LIMIT 1";
+
+$result_dia_mes = $conn->query($sql_dia_mes);
+
+$dia_mes_mas_pedidos = [];
+if ($result_dia_mes && $result_dia_mes->num_rows > 0) {
+    $dia_mes_mas_pedidos = $result_dia_mes->fetch_assoc();
+}
+
+// --- Consulta original para obtener los pedidos ---
+$sql = "SELECT * FROM eskaera_platera";
 $result = $conn->query($sql);
 
 $eskariak = [];
@@ -32,16 +71,20 @@ if ($result && $result->num_rows > 0) {
 }
 }
 
+// --- Cerrar la conexión de la base de datos después de las consultas ---
 $conn->close();
 
 // Combinar los datos en un solo array
+$datos['pedidos_por_plato'] = $pedidos_por_plato;
+$datos['dia_mas_pedidos'] = $dia_mas_pedidos;
+$datos['dia_mas_facturacion'] = $dia_mas_facturacion;
+$datos['dia_mes_mas_pedidos'] = $dia_mes_mas_pedidos; // Agregar el nuevo dato
 $datos['eskariak'] = $eskariak;
-$datos['comandas_por_trabajador'] = $comandas_por_trabajador;
 
-// Devolver la respuesta en JSON
+// Devolver la respuesta en JSON, con todos los datos combinados
 echo json_encode($datos, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 
-// Función para enviar datos a Odoo
+// --- Función para enviar datos a Odoo ---
 function odooraBidali($fitxategia, $modelo) {
     $url = "https://localhost:8085/jsonrpc";
     $db = "urko-gelan";

@@ -1,6 +1,7 @@
 <?php
 
 require("db_parameters.php");
+header('Content-Type: application/json');
 
 $sql = "SELECT * FROM mahaia";
 $result = $conn->query($sql);
